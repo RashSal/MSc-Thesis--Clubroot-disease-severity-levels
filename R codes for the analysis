@@ -1,0 +1,115 @@
+##Final surface area analysis
+# load required packages
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(emmeans)
+library(rstatix)
+library(ggstatsplot)
+library(Matrix)
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+library(stats)
+
+# read in your data
+library(readxl)
+surface_area_original <- read_excel("surface_area_original.xlsx")
+View(surface_area_original)
+
+data <- read_excel("surface_area_original.xlsx", sheet = 1, col_names = TRUE)
+
+##to check for outliars
+data1 <- data %>%
+  convert_as_factor(Host, Treatment, Rep)
+
+#To visualize the outliars
+data2<-data1 %>%
+  group_by(Treatment, Host) %>%
+  identify_outliers(AnalysedRegionArea)
+print(data2,n=38)
+
+# create a normal probability plot
+qqnorm(data$AnalysedRegionArea)
+qqline(data$AnalysedRegionArea) ##not normally distributed
+
+# perform the Shapiro-Wilk test
+shapiro.test(data$AnalysedRegionArea) #p-value is low. not normally distributed.maybe cause of the grouping effect
+
+#perform normality tests by group
+# Fit a linear model
+model <- lm(AnalysedRegionArea ~ Host + Treatment + Infection_Level, data = data)
+
+# Calculate the residuals
+residuals <- residuals(model)
+
+# Check the normality of the residuals using the Shapiro-Wilk test
+shapiro.test(residuals)
+##now the data is normally distributed p>0.05
+
+# Check the normality of the residuals using the Anderson-Darling test
+library(nortest)
+ad.test(residuals)
+#now the data is normally distributed p>0.05
+
+
+#Alternative way--ANOVA
+# convert visual categorization to factor
+data$Infection_Level <- factor(data$Infection_Level)
+
+# Fit the ANOVA model
+model <- lm(AnalysedRegionArea ~ Infection_Level + Host + Treatment, data = data)
+
+# Check the ANOVA table
+anova(model)
+
+# Check the post hoc tests
+library(multcomp)
+tukey <- glht(model, linfct = mcp(Infection_Level = "Tukey"))
+summary(tukey)
+##Don't see significant difference when host and treatment effects are included in the model.
+
+##Tried removing the host and treatment effect (This test is only to see the effect of leevl of infection)
+# Fit the ANOVA model
+model <- lm(AnalysedRegionArea ~ Infection_Level, data = data)
+
+# Check the ANOVA table
+anova(model)
+
+# Check the post hoc tests
+library(multcomp)
+tukey <- glht(model, linfct = mcp(Infection_Level = "Tukey"))
+summary(tukey)
+
+
+##Alternative way-Tried Bonfesrri comparsion testwith ANOVA including the effect from Host, Treatment and Infection level
+# Fit the ANOVA model
+model <- lm(AnalysedRegionArea ~ Infection_Level + Host + Treatment, data = data)
+
+# Check the ANOVA table
+anova(model)
+
+##Check the post hoc tests using Bonferroni correction
+tukey_bonf <- glht(model, linfct = mcp(Infection_Level = "Tukey"), alternative = "two.sided")
+summary(tukey_bonf, test = adjusted(type = "bonferroni"))
+
+#A different comparison test:Sidak test
+# Fit the ANOVA model
+model <- lm(AnalysedRegionArea ~ Infection_Level + Host + Treatment+Host*Treatment, data = data)
+
+# Check the ANOVA table
+anova(model)
+
+# Perform post-hoc pairwise comparisons with p-value adjustment
+library(multcomp)
+library(dplyr)
+
+# pairwise comparisons with p-value adjustment using the "bonferroni" method
+p.adjust <- pairwise.t.test(data$AnalysedRegionArea, data$Infection_Level, 
+                            p.adjust.method = "bonferroni")
+
+# Extract the results and format them into a data frame
+comparison_results <- tidy(p.adjust)
+
+# Print the comparison results
+comparison_results
